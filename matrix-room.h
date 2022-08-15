@@ -94,5 +94,8 @@ void matrix_room_send_message(struct _PurpleConversation *conv,
 gchar *matrix_room_displayname_to_userid(struct _PurpleConversation *conv,
         const gchar *who);
 
+struct _PurpleRoomlist *matrixprpl_roomlist_get_list(struct _PurpleConnection *pc);
+
+void matrixprpl_roomlist_cancel(struct _PurpleRoomlist * list);
 
 #endif

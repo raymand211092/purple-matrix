@@ -430,4 +430,10 @@ MatrixApiRequestData *matrix_api_get_room_state(MatrixConnectionData *conn,
         gpointer user_data);
 #endif
 
+MatrixApiRequestData *matrix_api_get_public_rooms(MatrixConnectionData *conn,
+        MatrixApiCallback callback,
+        MatrixApiErrorCallback error_callback,
+        MatrixApiBadResponseCallback bad_response_callback,
+        gpointer user_data);
+
 #endif
