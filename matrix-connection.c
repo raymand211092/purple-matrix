@@ -34,6 +34,7 @@
 #include "matrix-api.h"
 #include "matrix-json.h"
 #include "matrix-sync.h"
+#include "matrix-room.h"
 
 static void _start_next_sync(MatrixConnectionData *ma,
         const gchar *next_batch, gboolean full_state);
@@ -383,6 +384,76 @@ void matrix_connection_start_login(PurpleConnection *pc)
     }
 }
 
+static void _parse_room_event(JsonArray *event_array, guint event_idx,
+        JsonNode *event, gpointer user_data)
+{
+    PurpleConversation *conv = (PurpleConversation*)user_data;
+    JsonObject *json_event_obj;
+
+    json_event_obj = matrix_json_node_get_object(event);
+    if(json_event_obj == NULL) {
+        purple_debug_warning("prplmatrix", "non-object event\n");
+        return;
+    }
+
+    matrix_room_handle_state_event(conv, json_event_obj);
+}
+
+static void _parse_room_event3(JsonNode *event, gpointer user_data)
+{
+    PurpleConversation *conv = (PurpleConversation*)user_data;
+    JsonObject *json_event_obj;
+
+    json_event_obj = matrix_json_node_get_object(event);
+    if(json_event_obj == NULL) {
+        purple_debug_warning("prplmatrix", "non-object event\n");
+        return;
+    }
+
+    if(json_object_has_member(json_event_obj, "state_key")) {
+        matrix_room_handle_state_event(conv, json_event_obj);
+        matrix_room_complete_state_update(conv, TRUE);
+    } else {
+        matrix_room_handle_timeline_event(conv, json_event_obj);
+    }
+}
+
+static void _parse_room_event2(JsonArray *event_array, guint event_idx,
+        JsonNode *event, gpointer user_data)
+{
+  _parse_room_event3(event, user_data);
+}
+
+void reload_room_state(MatrixConnectionData *conn,
+        gpointer user_data,
+        JsonNode *json_root,
+        const char *raw_body, size_t raw_body_len, const char *content_type) {
+  JsonArray *events = matrix_json_node_get_array(json_root);
+  json_array_foreach_element(events, _parse_room_event, user_data);
+}
+
+void reload_room_members(MatrixConnectionData *conn,
+        gpointer user_data,
+        JsonNode *json_root,
+        const char *raw_body, size_t raw_body_len, const char *content_type) {
+  JsonObject *root_obj = matrix_json_node_get_object(json_root);
+  JsonArray *events = matrix_json_object_get_array_member(root_obj, "chunk");
+  json_array_foreach_element(events, _parse_room_event2, user_data);
+}
+
+void reload_room_messages(MatrixConnectionData *conn,
+        gpointer user_data,
+        JsonNode *json_root,
+        const char *raw_body, size_t raw_body_len, const char *content_type) {
+  JsonObject *root_obj = matrix_json_node_get_object(json_root);
+  JsonArray *events = matrix_json_object_get_array_member(root_obj, "chunk");
+  GList* rev = json_array_get_elements(events);
+  rev = g_list_reverse(rev);
+  g_list_foreach(rev, (GFunc)_parse_room_event3, user_data);
+  //json_array_foreach_element(events, _parse_room_event2, user_data);
+  JsonArray *state = matrix_json_object_get_array_member(root_obj, "state");
+  json_array_foreach_element(state, _parse_room_event, user_data);
+}
 
 static void _join_completed(MatrixConnectionData *conn,
         gpointer user_data,
@@ -398,6 +469,16 @@ static void _join_completed(MatrixConnectionData *conn,
     purple_debug_info("matrixprpl", "join %s completed", room_id);
 
     g_hash_table_destroy(components);
+
+    PurpleConversation * conv = purple_find_conversation_with_account(
+            PURPLE_CONV_TYPE_CHAT, room_id, conn->pc);
+    if (conv == 0) {
+        conv = matrix_room_create_conversation(conn->pc->gc, room_id);
+        //matrix_api_get_room_state(conn, room_id, reload_room_state, conv);
+        matrix_api_get_room_members(conn, room_id, reload_room_members, conv);
+        matrix_api_get_room_messages(conn, room_id, reload_room_messages, conv);
+    }
+    matrix_room_complete_state_update(conv, TRUE);
 }
 
 

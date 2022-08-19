@@ -141,8 +141,7 @@ static void matrix_sync_room(const gchar *room_id,
             PURPLE_CONV_TYPE_CHAT, room_id, pc->account);
 
     if(conv == NULL) {
-        conv = matrix_room_create_conversation(pc, room_id);
-        initial_sync = TRUE;
+        return; // TODO: read events and mark blist chat node as bold for unread messages, join / leave events
     }
 
     /* parse the room state */

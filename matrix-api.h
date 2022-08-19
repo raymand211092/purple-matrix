@@ -407,7 +407,6 @@ MatrixApiRequestData *matrix_api_upload_keys(MatrixConnectionData *conn,
         MatrixApiBadResponseCallback bad_response_callback,
         gpointer user_data);
 
-#if 0
 /**
  * Get the current state of a room
  *
@@ -420,6 +419,15 @@ MatrixApiRequestData *matrix_api_get_room_state(MatrixConnectionData *conn,
         const gchar *room_id,
         MatrixApiCallback callback,
         gpointer user_data);
-#endif
+
+MatrixApiRequestData *matrix_api_get_room_members(MatrixConnectionData *conn,
+        const gchar *room_id,
+        MatrixApiCallback callback,
+        gpointer user_data);
+
+MatrixApiRequestData *matrix_api_get_room_messages(MatrixConnectionData *conn,
+        const gchar *room_id,
+        MatrixApiCallback callback,
+        gpointer user_data);
 
 #endif

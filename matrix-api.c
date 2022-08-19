@@ -1093,7 +1093,6 @@ MatrixApiRequestData *matrix_api_upload_keys(MatrixConnectionData *conn,
 }
 
 
-#if 0
 MatrixApiRequestData *matrix_api_get_room_state(MatrixConnectionData *conn,
         const gchar *room_id,
         MatrixApiCallback callback,
@@ -1103,17 +1102,67 @@ MatrixApiRequestData *matrix_api_get_room_state(MatrixConnectionData *conn,
     MatrixApiRequestData *fetch_data;
 
     url = g_string_new(conn->homeserver);
-    g_string_append(url, "/_matrix/client/r0/rooms/");
+    g_string_append(url, "_matrix/client/r0/rooms/");
     g_string_append(url, purple_url_encode(room_id));
     g_string_append(url, "/state?access_token=");
     g_string_append(url, purple_url_encode(conn->access_token));
 
     purple_debug_info("matrixprpl", "getting state for %s\n", room_id);
 
-    fetch_data = matrix_api_start(url->str, NULL, conn, callback,
+    fetch_data = matrix_api_start(url->str, "GET", NULL, conn, callback,
             NULL, NULL, user_data, 10*1024*1024);
     g_string_free(url, TRUE);
 
     return fetch_data;
 }
-#endif
+
+
+MatrixApiRequestData *matrix_api_get_room_members(MatrixConnectionData *conn,
+        const gchar *room_id,
+        MatrixApiCallback callback,
+        gpointer user_data)
+{
+    GString *url;
+    MatrixApiRequestData *fetch_data;
+
+    url = g_string_new(conn->homeserver);
+    g_string_append(url, "_matrix/client/r0/rooms/");
+    g_string_append(url, purple_url_encode(room_id));
+    g_string_append(url, "/members?access_token=");
+    g_string_append(url, purple_url_encode(conn->access_token));
+
+    purple_debug_info("matrixprpl", "getting state for %s\n", room_id);
+
+    fetch_data = matrix_api_start(url->str, "GET", NULL, conn, callback,
+            NULL, NULL, user_data, 10*1024*1024);
+    g_string_free(url, TRUE);
+
+    return fetch_data;
+}
+
+MatrixApiRequestData *matrix_api_get_room_messages(MatrixConnectionData *conn,
+        const gchar *room_id,
+        MatrixApiCallback callback,
+        gpointer user_data)
+{
+    GString *url;
+    MatrixApiRequestData *fetch_data;
+
+    url = g_string_new(conn->homeserver);
+    g_string_append(url, "_matrix/client/r0/rooms/");
+    g_string_append(url, purple_url_encode(room_id));
+    g_string_append(url, "/messages?access_token=");
+    g_string_append(url, purple_url_encode(conn->access_token));
+    g_string_append(url, "&dir=b");
+    g_string_append(url, "&filter=");
+    g_string_append(url, purple_url_encode("{\"include_redundant_members\":\"true\"}"));
+
+    purple_debug_info("matrixprpl", "getting state for %s\n", room_id);
+
+    fetch_data = matrix_api_start(url->str, "GET", NULL, conn, callback,
+            NULL, NULL, user_data, 10*1024*1024);
+    g_string_free(url, TRUE);
+
+    return fetch_data;
+}
+
