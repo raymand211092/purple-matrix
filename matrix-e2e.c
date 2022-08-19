@@ -45,6 +45,7 @@ struct _MatrixE2EData {
     sqlite3 *db;
     /* Mapping from MatrixHashKeyOlm to MatrixOlmSession */
     GHashTable *olm_session_hash;
+    struct _MatrixApiRequestData *upload;
 };
 
 #define PURPLE_CONV_E2E_STATE "e2e"
@@ -594,7 +595,7 @@ int matrix_sign_json(MatrixConnectionData *conn, JsonObject *tosign)
     int ret = -1;
     OlmAccount *account = conn->e2e->oa;
     const gchar *device_id = conn->e2e->device_id;
-    PurpleConnection *pc = conn->pc;
+    PurpleConnection *pc = conn->account->gc;
     GString *can_json = matrix_canonical_json(tosign);
     gchar *can_json_c = g_string_free(can_json, FALSE);
     size_t sig_length = olm_account_signature_length(account);
@@ -633,7 +634,7 @@ out:
  */
 static int matrix_store_e2e_account(MatrixConnectionData *conn)
 {
-    PurpleConnection *pc = conn->pc;
+    PurpleConnection *pc = conn->account->gc;
 
     size_t pickle_len = olm_pickle_account_length(conn->e2e->oa);
     char *pickled_account = g_malloc0(pickle_len+1);
@@ -683,7 +684,7 @@ static int matrix_store_e2e_account(MatrixConnectionData *conn)
  */
 static int matrix_restore_e2e_account(MatrixConnectionData *conn)
 {
-    PurpleConnection *pc = conn->pc;
+    PurpleConnection *pc = conn->account->gc;
     gchar *pickled_account = NULL;
     const char *account_string =  purple_account_get_string(pc->account,
                     PRPL_ACCOUNT_OPT_OLM_ACCOUNT_KEYS, NULL);
@@ -814,7 +815,7 @@ static int get_id_keys(PurpleConnection *pc, OlmAccount *account, gchar ***algor
 /* See: https://matrix.org/docs/guides/e2e_implementation.html#creating-and-registering-one-time-keys */
 static int send_one_time_keys(MatrixConnectionData *conn, size_t n_keys)
 {
-    PurpleConnection *pc = conn->pc;
+    PurpleConnection *pc = conn->account->gc;
     int ret;
     size_t random_needed;
     void *random_buffer;
@@ -928,12 +929,11 @@ out:
  *               "signed_curve25519" : 100
  *           },
  */
-void matrix_e2e_handle_sync_key_counts(PurpleConnection *pc, JsonObject *count_object,
+void matrix_e2e_handle_sync_key_counts(MatrixConnectionData *conn, JsonObject *count_object,
                                        gboolean force_send)
 {
     gboolean need_to_send = force_send;
     gboolean valid_counts = FALSE;
-    MatrixConnectionData *conn = purple_connection_get_protocol_data(pc);
     size_t max_keys = olm_account_max_number_of_one_time_keys(conn->e2e->oa);
     size_t to_create = max_keys;
 
@@ -986,7 +986,8 @@ static void key_upload_callback(MatrixConnectionData *conn,
         matrix_store_e2e_account(conn);
     }
 
-    matrix_e2e_handle_sync_key_counts(conn->pc, key_counts, !key_counts);
+    matrix_e2e_handle_sync_key_counts(conn, key_counts, !key_counts);
+    conn->e2e->upload = NULL;
 }
 
 static void close_e2e_db(MatrixConnectionData *conn)
@@ -1002,7 +1003,7 @@ static void close_e2e_db(MatrixConnectionData *conn)
  */
 static int ensure_table(MatrixConnectionData *conn, const char *check, const char *create)
 {
-    PurpleConnection *pc = conn->pc;
+    PurpleConnection *pc = conn->account->gc;
     int ret;
     sqlite3_stmt *dbstmt;
     ret = sqlite3_prepare_v2(conn->e2e->db, check, -1, &dbstmt, NULL);
@@ -1039,7 +1040,7 @@ static int ensure_table(MatrixConnectionData *conn, const char *check, const cha
 }
 static int open_e2e_db(MatrixConnectionData *conn)
 {
-    PurpleConnection *pc = conn->pc;
+    PurpleConnection *pc = conn->account->gc;
     int ret;
     const char *purple_username = 
                purple_account_get_username(purple_connection_get_account(pc));
@@ -1081,7 +1082,7 @@ static int open_e2e_db(MatrixConnectionData *conn)
  */
 int matrix_e2e_get_device_keys(MatrixConnectionData *conn, const gchar *device_id)
 {
-    PurpleConnection *pc = conn->pc;
+    PurpleConnection *pc = conn->account->gc;
     JsonObject * json_dev_keys = NULL;
     OlmAccount *account = olm_account(g_malloc0(olm_account_size()));
     char *pickled_account = NULL;
@@ -1192,7 +1193,7 @@ int matrix_e2e_get_device_keys(MatrixConnectionData *conn, const gchar *device_i
     }
 
     /* Send the keys */
-    matrix_api_upload_keys(conn, json_dev_keys, NULL /* TODO: one time keys */,
+    conn->e2e->upload = matrix_api_upload_keys(conn, json_dev_keys, NULL /* TODO: one time keys */,
         key_upload_callback,
         matrix_api_error, matrix_api_bad_response, (void *)0);
     json_dev_keys = NULL; /* api_upload_keys frees it with it's whole json */
@@ -1231,6 +1232,10 @@ void matrix_e2e_cleanup_connection(MatrixConnectionData *conn)
         matrix_e2e_cleanup_conversation(conv);
     }
     if (conn->e2e) {
+        if (conn->e2e->upload) {
+            matrix_api_cancel(conn->e2e->upload);
+            conn->e2e->upload = NULL;
+        }
         close_e2e_db(conn);
         g_hash_table_destroy(conn->e2e->olm_session_hash);
         g_free(conn->e2e->curve25519_pubkey);
@@ -1886,7 +1891,7 @@ void matrix_e2e_cleanup_connection(MatrixConnectionData *conn)
 {
 }
 
-void matrix_e2e_handle_sync_key_counts(PurpleConnection *pc, JsonObject *count_object,
+void matrix_e2e_handle_sync_key_counts(MatrixConnectionData *pc, JsonObject *count_object,
                                        gboolean force_send)
 {
 }
